@@ -1,20 +1,26 @@
 # UniFi WiFi Captive Portal
 
-Small PHP captive portal for UniFi guest access. It supports public voucher and guest-device-code endpoints, optional TDS OAuth2 login, authenticated voucher generation, and Loki structured logging.
+Small PHP captive portal for UniFi guest access. It supports public voucher codes, external guest-code validation, OAuth2 login, UniFi guest authorization, and structured logging.
 
 ## Configure
 
-Put the main config in [API/funcs/portal-config.json](API/funcs/portal-config.json). It should look like this:
+Keep live secrets out of the repository. Put the real config outside the web root and point the app at it:
+
+```sh
+PORTAL_CONFIG_PATH=/path/to/wifi-captive-portal.json
+```
+
+A safe example config looks like this:
 
 ```json
 {
   "portal": {
-    "base_url": "https://portal.local.thomasdye.net",
-    "public_url": "https://portal.local.thomasdye.net/",
-    "allowed_redirect_hosts": ["portal.local.thomasdye.net", "captive.apple.com"]
+    "base_url": "https://portal.example.com",
+    "public_url": "https://portal.example.com/",
+    "allowed_redirect_hosts": ["portal.example.com", "captive.apple.com"]
   },
   "mongo": {
-    "uri": "mongodb://main.db.local.thomasdye.net:27018",
+    "uri": "mongodb://mongo.example.internal:27017",
     "database": "wifi_captive_portal"
   },
   "unifi": {
@@ -25,9 +31,9 @@ Put the main config in [API/funcs/portal-config.json](API/funcs/portal-config.js
     "password": "change-me",
     "auth_mode": "api_key_server",
     "api_key": "",
-    "api_key_server_path": "/Server/app/support/Apikeyserver.php",
-    "api_key_path": "/TDS/Unifi/HomeSystem",
-    "verify_tls": false,
+    "api_key_server_path": "/path/to/Apikeyserver.php",
+    "api_key_path": "/Example/Unifi/API",
+    "verify_tls": true,
     "default_minutes": 1440,
     "oauth_minutes": 7200,
     "authorize_paths": [
@@ -39,14 +45,14 @@ Put the main config in [API/funcs/portal-config.json](API/funcs/portal-config.js
   "oauth": {
     "tds": {
       "enabled": true,
-      "label": "TDS Login",
+      "label": "SSO Login",
       "client_id": "change-me",
       "client_secret": "change-me",
-      "issuer": "https://auth.thomasdye.net",
-      "authorize_url": "https://auth.thomasdye.net/auth/app/odic/authorize",
-      "token_url": "https://auth.thomasdye.net/auth/app/odic/token",
-      "userinfo_url": "https://auth.thomasdye.net/auth/app/odic/userinfo",
-      "jwks_uri": "https://auth.thomasdye.net/.well-known/jwks.json",
+      "issuer": "https://auth.example.com",
+      "authorize_url": "https://auth.example.com/oauth/authorize",
+      "token_url": "https://auth.example.com/oauth/token",
+      "userinfo_url": "https://auth.example.com/oauth/userinfo",
+      "jwks_uri": "https://auth.example.com/.well-known/jwks.json",
       "scopes": "openid profile email groups"
     },
     "providers": []
@@ -54,14 +60,14 @@ Put the main config in [API/funcs/portal-config.json](API/funcs/portal-config.js
   "logging": {
     "app": "wifi-captive-portal",
     "environment": "production",
-    "tds_loki_path": "/Server/app/support/Grafana_Loki.php"
+    "tds_loki_path": "/path/to/Grafana_Loki.php"
   },
   "guest_codes": {
     "mode": "auth_api",
-    "validate_url": "https://auth.thomasdye.net/auth/app/wifi-guest-codes/validate",
+    "validate_url": "https://auth.example.com/api/wifi-guest-codes/validate",
     "api_key": "",
-    "api_key_server_path": "/Server/app/support/Apikeyserver.php",
-    "api_key_path": "/TDS/Auth/WifiGuestCodes",
+    "api_key_server_path": "/path/to/Apikeyserver.php",
+    "api_key_path": "/Example/Auth/WifiGuestCodes",
     "timeout_seconds": 8
   },
   "codes": {
@@ -71,37 +77,46 @@ Put the main config in [API/funcs/portal-config.json](API/funcs/portal-config.js
 }
 ```
 
-The app reads this file by default. Set `PORTAL_CONFIG_PATH=/path/to/config.json` if you want to keep secrets outside this project folder.
+The app can also read `API/funcs/portal-config.json` by default, but that live config file is ignored by Git. Use it only for local/private deployments.
 
-The TDS provider defaults to the current Thomas Dye auth discovery values:
+Environment variables override JSON values for deployment-specific settings, including `PORTAL_BASE_URL`, `PORTAL_PUBLIC_URL`, `PORTAL_ALLOWED_REDIRECT_HOSTS`, `PORTAL_MONGO_URI`, `PORTAL_MONGO_DATABASE`, `UNIFI_*`, `TDS_OAUTH_*`, `PORTAL_OAUTH_PROVIDERS_JSON`, `GUEST_CODE_*`, `PORTAL_GUEST_CODES`, and `PORTAL_VOUCHERS`.
 
-```text
-issuer: https://auth.thomasdye.net
-authorization_endpoint: https://auth.thomasdye.net/auth/app/odic/authorize
-token_endpoint: https://auth.thomasdye.net/auth/app/odic/token
-userinfo_endpoint: https://auth.thomasdye.net/auth/app/odic/userinfo
-jwks_uri: https://auth.thomasdye.net/.well-known/jwks.json
+## UniFi Authorization
+
+Guest access is enabled by sending UniFi Network the `authorize-guest` command for the client MAC:
+
+```json
+{
+  "cmd": "authorize-guest",
+  "mac": "5a:fd:a0:86:c3:66",
+  "minutes": 1440
+}
 ```
 
-Override those with `TDS_OAUTH_ISSUER`, `TDS_OAUTH_AUTHORIZE_URL`, `TDS_OAUTH_TOKEN_URL`, `TDS_OAUTH_USERINFO_URL`, or `TDS_OAUTH_JWKS_URI` if they change.
+The portal tries each configured `authorize_paths` template with the site from `/guest/s/{site}/`, then with the configured fallback site. A 404 usually means the UniFi base URL, site, or path template does not match that controller. Check the `unifi_authorize_rejected.attempts` log field to see every path tried.
 
-Environment variables still override JSON values for deployment-specific settings, including `PORTAL_BASE_URL`, `PORTAL_PUBLIC_URL`, `PORTAL_ALLOWED_REDIRECT_HOSTS`, `PORTAL_MONGO_URI`, `PORTAL_MONGO_DATABASE`, `UNIFI_*`, `TDS_OAUTH_*`, `PORTAL_OAUTH_PROVIDERS_JSON`, `PORTAL_GUEST_CODES`, and `PORTAL_VOUCHERS`.
+For UniFi auth, `auth_mode` can be:
 
-Logging uses the shared TDS helper at `/Server/app/support/Grafana_Loki.php`. If it is available, portal logs are sent through `Grafana_Loki_Log("TDS_PHP_service", "wifi-captive-portal", ...)`; otherwise the portal falls back to `error_log`.
+- `api_key_server`: include a local API-key helper and call `Getapikeyforpath(api_key_path)`, then send `x-api-key`.
+- `password`: fall back to the older cookie/CSRF login flow.
+- direct API key: set `api_key` in the private config.
 
-Guest access is enabled by sending UniFi Network the `authorize-guest` command for the client MAC. The portal tries each configured `authorize_paths` template with the site from `/guest/s/{site}/`, then with the configured fallback site. A 404 means the UniFi base URL, site, or path template does not match that controller; check the `unifi_authorize_rejected.attempts` Loki field to see every path tried.
+## Durations
 
-For UniFi auth, the default `auth_mode` is `api_key_server`. The portal includes `/Server/app/support/Apikeyserver.php` and calls `Getapikeyforpath("/TDS/Unifi/HomeSystem")`, then sends the result as `x-api-key`. Set `auth_mode` to `password` only if you want to fall back to the older cookie/CSRF login flow.
+Authorization duration is source-specific:
 
-Authorization duration is source-specific: TDS OAuth uses `unifi.oauth_minutes` (`7200`, five days), voucher codes use the voucher record's `minutes`, and guest device codes use the guest-code record's `minutes`. `unifi.default_minutes` is only the fallback when a record does not specify a duration.
+- OAuth login uses `unifi.oauth_minutes` (`7200` is five days).
+- Voucher codes use the voucher record's `minutes`.
+- Guest device codes use the guest-code validation response's `minutes`.
+- `unifi.default_minutes` is only a fallback.
 
 ## Guest Code Auth API
 
-Guest device codes are validated by the Auth system when `guest_codes.mode` is `auth_api`. The portal sends:
+Guest device codes are validated by an external Auth API when `guest_codes.mode` is `auth_api`. The portal sends:
 
 ```http
 POST {guest_codes.validate_url}
-x-api-key: Getapikeyforpath("/TDS/Auth/WifiGuestCodes")
+x-api-key: Getapikeyforpath("{guest_codes.api_key_path}")
 Content-Type: application/json
 ```
 
@@ -111,13 +126,13 @@ Content-Type: application/json
   "client": {
     "client_mac": "5a:fd:a0:86:c3:66",
     "ap_mac": "78:8a:20:d6:8a:ae",
-    "ssid": "TDS Guest",
-    "site": "hwpuwyxu",
+    "ssid": "Guest WiFi",
+    "site": "site-id",
     "redirect_url": "http://captive.apple.com/"
   },
   "portal": {
     "request_id": "portal-request-id",
-    "base_url": "https://portal.local.thomasdye.net"
+    "base_url": "https://portal.example.com"
   }
 }
 ```
@@ -148,7 +163,7 @@ Denied response:
 UniFi commonly sends guests to `/guest/s/{site}/` and includes the site in the URL path. This portal supports that shape:
 
 ```text
-https://portal.local.thomasdye.net/guest/s/{site}/?ap={ap_mac}&id={client_mac}&url={redirect_url}&ssid={ssid}
+https://portal.example.com/guest/s/{site}/?ap={ap_mac}&id={client_mac}&url={redirect_url}&ssid={ssid}
 ```
 
 The root URL also works if you pass `site` as a query parameter. The page forwards those values to the API when a user redeems a voucher, enters a guest device access code, or starts OAuth login.
