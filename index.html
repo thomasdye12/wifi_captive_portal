@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guest WiFi Access</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main id="container">
+    <section aria-labelledby="portal-title">
+      <div id="code"><span>TDS </span>Access</div>
+      <hr>
+      <p id="desc">Guest WiFi access is ready.</p>
+
+      <h1 id="portal-title">Connect to WiFi</h1>
+      <p id="msg">Use a voucher, device code, or TDS login.</p>
+
+      <div id="details">
+        <div class="detail"><span class="key">Network:</span><span id="detail-ssid" class="value">Guest WiFi</span></div>
+        <div class="detail"><span class="key">Device:</span><span id="detail-device" class="value">Waiting for UniFi details</span></div>
+        <div class="detail"><span class="key">Access Time:</span><span id="detail-time" class="value"></span></div>
+        <div class="detail"><span class="key">Version:</span><span class="value">TDSHttpServer/wifi-portal-v1</span></div>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Access methods">
+        <button class="tab active" type="button" data-panel="voucher" role="tab" aria-selected="true">Voucher</button>
+        <button class="tab" type="button" data-panel="guest" role="tab" aria-selected="false">Device code</button>
+        <button class="tab" type="button" data-panel="login" role="tab" aria-selected="false">Login</button>
+      </div>
+
+      <form id="voucher-panel" class="panel active" data-kind="voucher">
+        <label for="voucher-code">Voucher code</label>
+        <div class="code-row">
+          <input id="voucher-code" name="code" autocomplete="one-time-code" inputmode="text" required>
+          <button type="submit">Connect</button>
+        </div>
+      </form>
+
+      <form id="guest-panel" class="panel" data-kind="guest">
+        <label for="guest-code">Guest device access code</label>
+        <div class="code-row">
+          <input id="guest-code" name="code" autocomplete="one-time-code" inputmode="text" required>
+          <button type="submit">Connect</button>
+        </div>
+      </form>
+
+      <div id="login-panel" class="panel">
+        <div id="oauth-buttons" class="oauth-list"></div>
+      </div>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="/portal.js"></script>
+</body>
+</html>

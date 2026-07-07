@@ -1,0 +1,10 @@
+.DS_Store
+test.txt
+
+# Live deployment config and secrets.
+API/funcs/portal-config.json
+
+# Local editor/runtime noise.
+*.log
+*.tmp
+*.swp
